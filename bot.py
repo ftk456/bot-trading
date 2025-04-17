@@ -3,6 +3,7 @@ import time
 import pandas
 from ta import trend
 import math
+from binance.helpers import round_step_size
 
 # variables constantes
 API_KEY = "" #clé api
@@ -21,7 +22,7 @@ class Trading():
         self.cryptoSymbol = CRYPTO_SYMBOL
 
     def get_exchange_info(self): #récolte les données du marché
-        data = self.client.get_historical_klines(symbol=self.pairSymbol, interval=self.client.KLINE_INTERVAL_1HOUR, start_str=str(float(time.time() - (3600 * 24 * 30))), end_str=str(float(time.time())))
+        data = self.client.get_historical_klines(symbol=self.pairSymbol, interval=self.client.KLINE_INTERVAL_3MINUTE, start_str=str(float(time.time() - (3600 * 24 * 30))), end_str=str(float(time.time())))
         #crée un tableau de valeurs pour mieux se repérer
         df = pandas.DataFrame(data=data, columns=["open_time", "open", "high", "low", "close", "volume", "close_time", "qa_volume", "no_trades", "tbb_asset_volume", "tbq_asset_volume", "ignore"])
 
@@ -72,19 +73,25 @@ class Trading():
         print(actualPrice)
         print(fiatAmount)
         print(cryptoAmount)
+
+        tick_size = '0.01'
         
         if self.get_exchange_info()["SMA7"].iloc[-2] < self.get_exchange_info()["SMA25"].iloc[-2]: #si courbe rose au dessus de la courbe jaune
             qtyToBuy = self.truncate(fiatAmount / actualPrice, MY_TRUNCATE)
             if qtyToBuy > 0.0001:
-                self.client.create_order(symbol=self.pairSymbol, side=self.client.SIDE_BUY, type=self.client.ORDER_TYPE_MARKET, quantity=qtyToBuy)
-                print(f"{qtyToBuy}{self.cryptoSymbol} acheté pour {qtyToBuy * actualPrice}{self.fiatSymbol}")
+                limit = (actualPrice - ((actualPrice * 0.3) / 100))
+                roundedToTick = round_step_size(limit, tick_size)
+                print(f"Limite prix {roundedToTick}")
+                self.client.create_order(symbol=self.pairSymbol, side=self.client.SIDE_BUY, type=self.client.ORDER_TYPE_LIMIT, timeInForce=self.client.TIME_IN_FORCE_GTC, quantity=qtyToBuy, price=roundedToTick)
             else:
                 print("Pas assez de fond pour acheter la crypto")
         elif self.get_exchange_info()["SMA7"].iloc[-2] > self.get_exchange_info()["SMA25"].iloc[-2]: #si courbe jaune au dessus de la courbe rose
             qtyToSell = self.truncate(cryptoAmount, MY_TRUNCATE)
             if qtyToSell > 0.0001:
-                self.client.create_order(symbol=self.pairSymbol, side=self.client.SIDE_SELL, type=self.client.ORDER_TYPE_MARKET, quantity=qtyToSell)
-                print(f"{qtyToSell}{self.cryptoSymbol} vendus pour {qtyToSell * actualPrice}{self.fiatSymbol}")
+                limit = (actualPrice + ((actualPrice * 0.3) / 100))
+                roundedToTick = round_step_size(limit, tick_size)
+                print(f"Limite prix {roundedToTick}")
+                self.client.create_order(symbol=self.pairSymbol, side=self.client.SIDE_SELL, type=self.client.ORDER_TYPE_LIMIT, timeInForce=self.client.TIME_IN_FORCE_GTC, quantity=qtyToSell, price=roundedToTick)
             else:
                 print("Pas assez de crypto pour vendre")
         else: #dans le cas ou il n'y a rien à faire
